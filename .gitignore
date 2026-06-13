@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local config
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Build outputs
+build/
+dist/
+*.spec.bak
+*.log
+*.tmp
+*.temp
+
+# Model weights and generated artifacts
+*.pth
+*.pt
+*.onnx
+*.ckpt
+*.safetensors
+outputs/
+exports/
+reports/
+history/
+
+# Installer binaries and archives
+*.exe
+*.msi
+*.dmg
+*.iso
+*.zip
+*.rar
+*.7z
+*.gz
+
+# Media and office documents
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.mkv
+*.webm
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.csv
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Node/npm caches if frontend tooling is added later
+node_modules/
+
+# Local preview files
+.preview

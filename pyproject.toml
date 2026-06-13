@@ -1,0 +1,47 @@
+[project]
+name = "fish-agent"
+version = "3.4.0"
+description = "Fish-Agent aquatic product freshness assessment workflow"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Fish-Agent Contributors" }]
+dependencies = [
+    "fastapi>=0.121,<1",
+    "uvicorn>=0.38,<1",
+    "pydantic>=2.12,<3",
+    "langgraph>=1.0,<2",
+    "langchain-core>=1.0,<2",
+    "Jinja2>=3.1,<4",
+    "Pillow>=10.3,<12",
+    "requests>=2.31,<3",
+    "python-dotenv>=1.0,<2",
+    "chardet>=5.2,<6",
+    "pypdf>=6.4,<7",
+    "docx2python>=3.5,<4",
+    "openpyxl>=3.1,<4",
+    "pandas>=2.2,<3",
+    "python-pptx>=1.0,<2",
+]
+
+[project.optional-dependencies]
+model = [
+    "torch>=2.3",
+    "torchvision>=0.18",
+    "numpy>=1.26,<3",
+    "matplotlib>=3.8,<4",
+    "opencv-python>=4.9,<5",
+    "python-multipart>=0.0.9",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23,<1",
+]
+
+[tool.uv]
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
