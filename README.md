@@ -40,7 +40,7 @@ image_upload
 ## 目录结构
 
 ```text
-projects/
+Fish-Agent/
 ├── config/                     # 多模态/文本大模型提示词与模型参数
 ├── docs/                       # 模型集成与工作流说明
 ├── installer/                  # Windows 本地程序源码与打包配置
@@ -63,7 +63,7 @@ projects/
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/yance77777/Fish-Agent.git
-cd Fish-Agent/projects
+cd Fish-Agent
 
 # 2. 安装依赖
 pip install -r requirements.txt

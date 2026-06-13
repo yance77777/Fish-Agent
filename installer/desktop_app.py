@@ -38,10 +38,10 @@ from torchvision import transforms
 from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
 
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "3.4.0"
 APP_TITLE = f"Fish-Agent V{APP_VERSION} 水产品新鲜度智能评估系统"
 GITHUB_URL = "https://github.com/yance77777/Fish-Agent"
-SUPPORT_EMAIL = "yance77777@outlook.com"
+SUPPORT_URL = f"{GITHUB_URL}/issues"
 
 SUPPORTED_IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 IMAGE_FILE_TYPES = [
@@ -727,7 +727,7 @@ class FishAgentDesktop(tk.Tk):
         ttk.Label(header, text="Fish-Agent", style="Title.TLabel").pack(side=tk.LEFT)
         ttk.Label(
             header,
-            text="水产品新鲜度智能评估系统  ·  V3.4.0",
+            text=f"水产品新鲜度智能评估系统  ·  V{APP_VERSION}",
             style="Subtitle.TLabel",
         ).pack(side=tk.LEFT, padx=(16, 0), pady=(8, 0))
 
@@ -978,7 +978,7 @@ class FishAgentDesktop(tk.Tk):
 
 
 def run_cli(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Fish-Agent V3.4.0 local analyzer")
+    parser = argparse.ArgumentParser(description=f"Fish-Agent V{APP_VERSION} local analyzer")
     parser.add_argument("image", nargs="?", help="Path to fish-eye image")
     parser.add_argument("--output", "-o", help="Write result JSON to file")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
