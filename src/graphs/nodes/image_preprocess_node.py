@@ -91,7 +91,14 @@ def image_preprocess_node(
     preprocess_log["operations"] = operations
 
     # 执行实际的图像预处理
-    image_url: str = state.uploaded_image.url
+    image_url: str = state.uploaded_image.url if state.uploaded_image else ""
+    if not image_url:
+        preprocess_log["status"] = "skipped"
+        preprocess_log["preprocessing_error"] = "未找到上传图片"
+        return ImagePreprocessOutput(
+            processed_image=File(url="", file_type="image"),
+            preprocessing_log=preprocess_log
+        )
 
     # 默认使用原图作为处理后的图片（异常时或无需处理时）
     processed_file: File = state.uploaded_image

@@ -133,6 +133,7 @@ def recommendation_generation_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.5)
     max_tokens: int = model_config.get("max_completion_tokens", 2000)
+    timeout: float = float(model_config.get("timeout", 60))
     
     try:
         # 使用LLMClient调用大模型
@@ -149,7 +150,8 @@ def recommendation_generation_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -296,5 +298,4 @@ def _get_default_recommendations(
         "safety_warnings": safety,
         "best_practices": best
     }
-
 

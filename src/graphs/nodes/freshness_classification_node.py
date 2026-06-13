@@ -16,8 +16,6 @@ from graphs.state import FreshnessClassificationInput, FreshnessClassificationOu
 from graphs.utils import get_confidence_level, config_path
 from tools.fishfreshnet_client import get_client
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -154,7 +152,7 @@ def fallback_to_multimodal_llm(
 
     # 默认值使用有效枚举值"不新鲜"，避免下游节点出现意外行为
     default_level: str = "不新鲜"
-    default_score: float = 0.5
+    default_score: float = 0.4
     default_level_str: str = "低"
     default_details: Dict[str, Any] = {
         "eye_clarity": "无法确定",
@@ -170,6 +168,7 @@ def fallback_to_multimodal_llm(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.2)
     max_tokens: int = model_config.get("max_completion_tokens", 500)
+    timeout: float = float(model_config.get("timeout", 60))
 
     try:
         # 初始化LLM客户端
@@ -207,7 +206,8 @@ def fallback_to_multimodal_llm(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
 
         # 处理响应内容
@@ -240,7 +240,7 @@ def fallback_to_multimodal_llm(
             confidence_level: str = get_confidence_level(confidence_score)
 
             # 添加置信度水平描述
-            classification_details["confidence_level_description"] = f"置信度{confidence_level}（{'>' if confidence_level == '高' else '≥' if confidence_level == '中' else '<'}{'0.8' if confidence_level == '高' else '0.5' if confidence_level == '中' else '0.5'}）"
+            classification_details["confidence_level_description"] = f"置信度{confidence_level}（{'≥0.8' if confidence_level == '高' else '≥0.5' if confidence_level == '中' else '<0.5'}）"
             classification_details["note"] = "多模态大模型分析结果"
 
             return FreshnessClassificationOutput(
@@ -266,6 +266,4 @@ def fallback_to_multimodal_llm(
             confidence_level=default_level_str,
             classification_details=default_details
         )
-
-
 

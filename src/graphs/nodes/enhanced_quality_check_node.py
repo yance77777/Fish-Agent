@@ -14,7 +14,6 @@ from langgraph.runtime import Runtime
 from tools.llm_client import LLMClient
 from graphs.state import EnhancedQualityCheckInput, EnhancedQualityCheckOutput
 from graphs.utils import config_path
-from utils.file.file import File
 
 
 def enhanced_quality_check_node(
@@ -50,6 +49,7 @@ def enhanced_quality_check_node(
     quality_score: float = 0.0
     quality_issues: List[str] = []
     scene_type: str = ""
+    response_str: str = ""
     
     # 获取图片URL
     image_url: str = state.uploaded_image.url if state.uploaded_image else ""
@@ -130,13 +130,15 @@ def enhanced_quality_check_node(
         model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
         temperature: float = model_config.get("temperature", 0.1)
         max_tokens: int = model_config.get("max_completion_tokens", 800)
+        timeout: float = float(model_config.get("timeout", 60))
         
         # 调用多模态大模型
         response = client.invoke(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -232,5 +234,3 @@ def enhanced_quality_check_node(
         quality_issues=quality_issues,
         scene_type=scene_type
     )
-
-

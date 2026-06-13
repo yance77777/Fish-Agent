@@ -83,6 +83,47 @@ def report_generation_node(
         "confidence_explanation": f"本次评估置信度为{confidence_percent}，属于{state.confidence_level}置信度区间。",
         "disclaimer": "本报告基于鱼眼视觉特征分析生成，仅供参考。"
     }
+
+    model_config: Dict[str, Any] = llm_config.get("config", {})
+    model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
+    temperature: float = model_config.get("temperature", 0.4)
+    max_tokens: int = model_config.get("max_completion_tokens", 800)
+    timeout: float = float(model_config.get("timeout", 60))
+
+    report_system_prompt: str = llm_config.get("sp", "")
+    report_user_template: str = llm_config.get("up", "")
+    if report_system_prompt and report_user_template:
+        try:
+            report_user_prompt = Template(report_user_template).render(
+                structured_analysis=json.dumps(state.structured_analysis, ensure_ascii=False),
+                freshness_level=state.freshness_level,
+                confidence_score=f"{state.confidence_score:.2f}",
+                freshness_trend=state.freshness_trend or "无历史数据",
+                predicted_remaining_hours=state.predicted_remaining_hours or 0,
+                heatmap_interpretation=state.heatmap_interpretation,
+                fish_type=state.fish_type or "未知鱼种"
+            )
+            client = LLMClient(ctx=ctx)
+            response = client.invoke(
+                messages=[
+                    SystemMessage(content=report_system_prompt),
+                    HumanMessage(content=report_user_prompt)
+                ],
+                model=model_id,
+                temperature=temperature,
+                max_completion_tokens=max_tokens,
+                timeout=timeout
+            )
+            response_str = response.content if isinstance(response.content, str) else str(response.content)
+            json_start = response_str.find("{")
+            json_end = response_str.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                parsed_report = json.loads(response_str[json_start:json_end])
+                if isinstance(parsed_report, dict):
+                    freshness_report = parsed_report.get("freshness_report", parsed_report)
+        except Exception:
+            # 配置化报告生成失败时，保留上面的确定性报告。
+            pass
     
     # 使用大模型动态生成知识图谱匹配结果
     fish_type: str = state.fish_type or "未知鱼种"
@@ -114,12 +155,6 @@ def report_generation_node(
 
 请根据专业知识给出对应的处理建议和烹饪推荐。"""
     
-    # 获取模型配置
-    model_config: Dict[str, Any] = llm_config.get("config", {})
-    model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
-    temperature: float = model_config.get("temperature", 0.4)
-    max_tokens: int = model_config.get("max_completion_tokens", 800)
-    
     try:
         # 使用LLMClient进行知识图谱匹配
         client: LLMClient = LLMClient(ctx=ctx)
@@ -135,7 +170,8 @@ def report_generation_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -208,5 +244,3 @@ def report_generation_node(
         freshness_report=freshness_report,
         knowledge_graph_match=knowledge_graph_match
     )
-
-

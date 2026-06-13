@@ -208,7 +208,7 @@ class FreshnessClassificationOutput(BaseModel):
     """新鲜度分类节点的输出"""
     freshness_level: str = Field(..., description="新鲜度等级")
     confidence_score: float = Field(..., description="置信度分数")
-    confidence_level: str = Field(..., description="置信度水平：高(>0.8)/中(0.5-0.8)/低(<0.5)")
+    confidence_level: str = Field(..., description="置信度水平：高(>=0.8)/中(0.5-0.8)/低(<0.5)")
     classification_details: Dict[str, Any] = Field(default={}, description="分类详细信息")
 
 
@@ -235,7 +235,7 @@ class MultiRegionFusionOutput(BaseModel):
     fusion_score: float = Field(..., description="融合评分")
     freshness_level: str = Field(..., description="融合后新鲜度等级（覆盖全局状态）")
     confidence_score: float = Field(..., description="融合后置信度分数（覆盖全局状态）")
-    confidence_level: str = Field(..., description="置信度水平：高(>0.8)/中(0.5-0.8)/低(<0.5)")
+    confidence_level: str = Field(..., description="置信度水平：高(>=0.8)/中(0.5-0.8)/低(<0.5)")
     fusion_method: str = Field(..., description="融合方法描述")
     fusion_details: Dict[str, Any] = Field(default={}, description="融合详细信息")
 
@@ -255,7 +255,7 @@ class BackupModelReviewOutput(BaseModel):
     backup_confidence: float = Field(..., description="备用模型置信度")
     freshness_level: str = Field(..., description="最终新鲜度等级（覆盖全局状态）")
     confidence_score: float = Field(..., description="最终置信度分数（覆盖全局状态）")
-    confidence_level: str = Field(..., description="置信度水平：高(>0.8)/中(0.5-0.8)/低(<0.5)")
+    confidence_level: str = Field(..., description="置信度水平：高(>=0.8)/中(0.5-0.8)/低(<0.5)")
     review_method: str = Field(..., description="复核方法描述")
     review_details: Dict[str, Any] = Field(default={}, description="复核详细信息")
     uncertainty_reason: str = Field(default="", description="低置信度原因说明")
@@ -296,6 +296,7 @@ class EnhancedGradCAMOutput(BaseModel):
 # ==================== 节点⑩ 大模型结构化专业分析 ====================
 class StructuredAnalysisInput(BaseModel):
     """结构化专业分析节点的输入"""
+    processed_image: Optional[File] = Field(default=None, description="预处理后的图片")
     freshness_level: str = Field(..., description="新鲜度等级")
     confidence_score: float = Field(..., description="置信度分数")
     confidence_level: str = Field(..., description="置信度水平")

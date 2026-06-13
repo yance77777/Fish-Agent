@@ -92,12 +92,14 @@ def structured_analysis_node(
 请输出JSON格式的结构化分析结果。""")
 
     # 使用Jinja2渲染模板
+    image_url: str = state.processed_image.url if state.processed_image else ""
     up_tpl: Template = Template(up_template)
     user_prompt: str = up_tpl.render(
         freshness_level=state.freshness_level,
         confidence_level=state.confidence_level,
         confidence_score=f"{state.confidence_score:.2f}",
-        heatmap_interpretation=state.heatmap_interpretation
+        heatmap_interpretation=state.heatmap_interpretation,
+        image_url=image_url
     )
     
     # 获取模型配置
@@ -105,23 +107,35 @@ def structured_analysis_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.3)
     max_tokens: int = model_config.get("max_completion_tokens", 1500)
+    timeout: float = float(model_config.get("timeout", 60))
     
     try:
         # 使用LLMClient调用大模型
         client: LLMClient = LLMClient(ctx=ctx)
         
-        # 构建消息列表
-        messages: List[Any] = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ]
+        # 构建消息列表。有图片时使用多模态输入，避免仅依赖上游文本描述。
+        messages: List[Any]
+        if image_url:
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=[
+                    {"type": "text", "text": user_prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ])
+            ]
+        else:
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
         
         # 调用大模型
         response = client.invoke(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -201,5 +215,3 @@ def structured_analysis_node(
     return StructuredAnalysisOutput(
         structured_analysis=structured_analysis
     )
-
-

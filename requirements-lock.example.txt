@@ -1,0 +1,11 @@
+# Example lock file placeholder.
+#
+# For a reproducible deployment, generate a lock file in your target Python
+# version and platform, then install from that file:
+#
+#   python -m pip freeze > requirements-lock.txt
+#   python -m pip install -r requirements-lock.txt
+#
+# The repository keeps requirements.txt and pyproject.toml as version-ranged
+# source dependency declarations so users can choose CPU/GPU and platform
+# specific packages.

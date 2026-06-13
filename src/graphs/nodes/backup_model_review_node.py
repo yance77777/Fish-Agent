@@ -5,6 +5,7 @@
 """
 import json
 from typing import Dict, Any, Optional, List
+from jinja2 import Template
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.runtime import Runtime
@@ -39,7 +40,7 @@ def backup_model_review_node(
 
     # 获取初始值（处理Optional类型）
     initial_freshness: str = state.freshness_level or "新鲜"
-    initial_confidence_val: float = state.confidence_score or 0.0
+    initial_confidence_val: float = state.confidence_score if state.confidence_score is not None else 0.0
 
     # 初始化结果
     backup_freshness_level: str = initial_freshness
@@ -81,16 +82,22 @@ def backup_model_review_node(
 }""")
 
     # 用户提示词
-    user_prompt: str = f"""请对以下低置信度检测结果进行复核：
+    user_prompt_template: str = llm_config.get("up", """请对以下低置信度检测结果进行复核：
 
 原始检测结果：
-- 新鲜度等级：{initial_freshness}
-- 置信度分数：{initial_confidence_val:.2f}
+- 新鲜度等级：{{freshness_level}}
+- 置信度分数：{{confidence_score}}
 
-图片URL: {image_url}
+图片URL: {{image_url}}
 
 这是一个置信度较低（<0.5）的结果，请仔细分析后给出更可靠的判断。
-如果图片质量有明显问题（模糊、过曝、角度不当），请建议用户重拍。"""
+如果图片质量有明显问题（模糊、过曝、角度不当），请建议用户重拍。""")
+    user_prompt: str = Template(user_prompt_template).render(
+        freshness_level=initial_freshness,
+        confidence_score=f"{initial_confidence_val:.2f}",
+        image_url=image_url,
+        fish_eye_regions=state.fish_eye_regions
+    )
 
     # 构建消息列表（如果有图片，使用多模态）
     messages: List[Any]
@@ -113,6 +120,7 @@ def backup_model_review_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.2)
     max_tokens: int = model_config.get("max_completion_tokens", 800)
+    timeout: float = float(model_config.get("timeout", 60))
 
     try:
         # 使用LLMClient进行复核
@@ -123,7 +131,8 @@ def backup_model_review_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
 
         # 解析LLM响应
@@ -153,7 +162,7 @@ def backup_model_review_node(
 
             # 提取复核结果
             backup_freshness_level = str(result.get("backup_freshness_level", initial_freshness))
-            backup_confidence = float(result.get("backup_confidence", initial_confidence_val + 0.1))
+            backup_confidence = float(result.get("backup_confidence", max(initial_confidence_val, 0.3)))
 
             # 使用全局状态字段名
             freshness_level = str(result.get("freshness_level", result.get("final_freshness_level", backup_freshness_level)))
@@ -193,6 +202,4 @@ def backup_model_review_node(
         review_details=review_details,
         uncertainty_reason=uncertainty_reason
     )
-
-
 

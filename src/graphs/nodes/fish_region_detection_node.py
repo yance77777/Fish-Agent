@@ -10,7 +10,21 @@ from langgraph.runtime import Runtime
 from tools.llm_client import LLMClient
 from graphs.state import FishRegionDetectionInput, FishRegionDetectionOutput
 from graphs.utils import config_path
-from utils.file.file import File
+
+
+def _sanitize_regions(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    valid_regions: List[Dict[str, Any]] = []
+    for region in value:
+        if isinstance(region, dict):
+            valid_regions.append({
+                "bbox": region.get("bbox", [0.1, 0.1, 0.9, 0.9]),
+                "confidence": float(region.get("confidence", 0.5)),
+                "label": str(region.get("label", "unknown")),
+                "description": str(region.get("description", ""))
+            })
+    return valid_regions
 
 
 def fish_region_detection_node(
@@ -42,6 +56,7 @@ def fish_region_detection_node(
     gill_regions: List[Dict[str, Any]] = []
     body_regions: List[Dict[str, Any]] = []
     region_detection_confidence: float = 0.0
+    response_str: str = ""
 
     # 获取图片URL
     image_url: str = state.processed_image.url if state.processed_image else ""
@@ -104,6 +119,7 @@ def fish_region_detection_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.3)
     max_tokens: int = model_config.get("max_completion_tokens", 1000)
+    timeout: float = float(model_config.get("timeout", 60))
 
     try:
         # 使用LLMClient进行多模态调用
@@ -123,7 +139,8 @@ def fish_region_detection_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
 
         # 解析LLM响应
@@ -152,27 +169,10 @@ def fish_region_detection_node(
             result: Dict[str, Any] = json.loads(json_str)
 
             # 提取检测结果
-            fish_eye_regions = result.get("fish_eye_regions", [])
-            gill_regions = result.get("gill_regions", [])
-            body_regions = result.get("body_regions", [])
+            fish_eye_regions = _sanitize_regions(result.get("fish_eye_regions", []))
+            gill_regions = _sanitize_regions(result.get("gill_regions", []))
+            body_regions = _sanitize_regions(result.get("body_regions", []))
             region_detection_confidence = float(result.get("region_detection_confidence", 0.0))
-
-            # 确保所有区域列表格式正确
-            for region_list in [fish_eye_regions, gill_regions, body_regions]:
-                if not isinstance(region_list, list):
-                    region_list.clear()
-                else:
-                    valid_regions: List[Dict[str, Any]] = []
-                    for region in region_list:
-                        if isinstance(region, dict):
-                            valid_regions.append({
-                                "bbox": region.get("bbox", [0.1, 0.1, 0.9, 0.9]),
-                                "confidence": float(region.get("confidence", 0.5)),
-                                "label": str(region.get("label", "unknown")),
-                                "description": str(region.get("description", ""))
-                            })
-                    region_list.clear()
-                    region_list.extend(valid_regions)
 
     except json.JSONDecodeError:
         # JSON解析失败，基于文本判断是否有关键区域
@@ -201,5 +201,3 @@ def fish_region_detection_node(
         body_regions=body_regions,
         region_detection_confidence=region_detection_confidence
     )
-
-

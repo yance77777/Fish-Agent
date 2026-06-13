@@ -1,14 +1,12 @@
-"""
-FishFreshNetV1 模型推理API服务
-提供新鲜度分类和Grad-CAM可视化功能
-"""
+"""FishFreshNetV1 model inference API."""
 import os
 import io
 import base64
 import logging
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict
 from datetime import datetime
 
 import torch
@@ -20,7 +18,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
-
+import requests
 import matplotlib.pyplot as plt
 import cv2
 
@@ -31,28 +29,42 @@ if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.append(str(PROJECT_ROOT / "src"))
 from models.fishfreshnet_model import load_model
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_BYTES = int(os.getenv("FISHFRESHNET_MAX_IMAGE_MB", "25")) * 1024 * 1024
+
+model = None
+device = None
+
+
+def parse_cors_origins() -> list[str]:
+    cors_env = os.getenv("CORS_ORIGINS")
+    if cors_env is None:
+        return ["*"]
+    origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_model_on_startup()
+    yield
+
 
 app = FastAPI(
     title="FishFreshNetV1 API",
     description="鱼眼新鲜度分类服务",
-    version="3.4.0"
+    version="3.4.0",
+    lifespan=lifespan,
 )
-
-_cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=parse_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
-model = None
-device = None
 
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -105,8 +117,7 @@ def resolve_model_path() -> Path:
     return PROJECT_ROOT / "src" / "storage" / "fishfreshnet_v1.pth"
 
 
-@app.on_event("startup")
-async def startup_event():
+def load_model_on_startup() -> None:
     """应用启动时加载模型"""
     global model, device
     
@@ -124,6 +135,66 @@ async def startup_event():
     except Exception as e:
         logger.error(f"❌ 模型加载失败: {e}")
         raise
+
+
+def ensure_model_loaded() -> None:
+    if model is None or device is None:
+        raise HTTPException(status_code=503, detail="Model is not loaded")
+
+
+async def read_limited_upload(file: UploadFile) -> bytes:
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Uploaded image is too large")
+    return data
+
+
+def load_image_from_bytes(image_bytes: bytes) -> Image.Image:
+    try:
+        return Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image file: {exc}") from exc
+
+
+def predict_image(image: Image.Image) -> PredictionResult:
+    ensure_model_loaded()
+    input_tensor = preprocess(image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        outputs = model(input_tensor)
+        probabilities = F.softmax(outputs, dim=1)
+        confidence, predicted = torch.max(probabilities, 1)
+
+    label_idx = predicted.item()
+    confidence_score = confidence.item()
+    all_probs = probabilities[0].cpu().numpy()
+    return PredictionResult(
+        freshness_level=FRESHNESS_LABELS[label_idx],
+        freshness_label=label_idx,
+        confidence_score=round(confidence_score, 4),
+        all_probabilities={
+            FRESHNESS_LABELS[i]: float(all_probs[i])
+            for i in range(3)
+        },
+        description=FRESHNESS_DESCRIPTIONS[label_idx],
+        timestamp=datetime.now().isoformat()
+    )
+
+
+def download_image(image_url: str) -> Image.Image:
+    try:
+        response = requests.get(image_url, timeout=10, stream=True)
+        response.raise_for_status()
+        content_length = response.headers.get("content-length")
+        if content_length and int(content_length) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Remote image is too large")
+        data = response.raw.read(MAX_IMAGE_BYTES + 1, decode_content=True)
+        if len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Remote image is too large")
+        return load_image_from_bytes(data)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch image: {exc}") from exc
 
 
 @app.get("/")
@@ -149,41 +220,15 @@ async def predict_freshness(file: UploadFile = File(...)):
         预测结果
     """
     try:
-        # 读取图像
-        image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        
-        # 预处理
-        input_tensor = preprocess(image).unsqueeze(0).to(device)
-        
-        # 推理
-        with torch.no_grad():
-            outputs = model(input_tensor)
-            probabilities = F.softmax(outputs, dim=1)
-            confidence, predicted = torch.max(probabilities, 1)
-        
-        # 获取结果
-        label_idx = predicted.item()
-        confidence_score = confidence.item()
-        all_probs = probabilities[0].cpu().numpy()
-        
-        # 构建结果
-        result = PredictionResult(
-            freshness_level=FRESHNESS_LABELS[label_idx],
-            freshness_label=label_idx,
-            confidence_score=round(confidence_score, 4),
-            all_probabilities={
-                FRESHNESS_LABELS[i]: float(all_probs[i]) 
-                for i in range(3)
-            },
-            description=FRESHNESS_DESCRIPTIONS[label_idx],
-            timestamp=datetime.now().isoformat()
-        )
+        image = load_image_from_bytes(await read_limited_upload(file))
+        result = predict_image(image)
         
         logger.info(f"✅ 预测完成: {result.freshness_level} ({result.confidence_score:.2%})")
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ 预测失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -201,23 +246,12 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
         预测结果和热力图
     """
     try:
-        # 读取图像
-        image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        ensure_model_loaded()
+        image = load_image_from_bytes(await read_limited_upload(file))
         original_image = np.array(image)
-        
-        # 预处理
         input_tensor = preprocess(image).unsqueeze(0).to(device)
-        
-        # 推理
-        outputs = model(input_tensor)
-        probabilities = F.softmax(outputs, dim=1)
-        confidence, predicted = torch.max(probabilities, 1)
-        
-        # 获取预测结果
-        label_idx = predicted.item()
-        confidence_score = confidence.item()
-        all_probs = probabilities[0].cpu().numpy()
+        prediction = predict_image(image)
+        label_idx = prediction.freshness_label
         
         # 生成Grad-CAM
         heatmap = generate_gradcam(model, input_tensor, label_idx)
@@ -231,19 +265,6 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
         heatmap_pil.save(buffered, format="JPEG", quality=95)
         heatmap_base64 = base64.b64encode(buffered.getvalue()).decode()
         
-        # 构建结果
-        prediction = PredictionResult(
-            freshness_level=FRESHNESS_LABELS[label_idx],
-            freshness_label=label_idx,
-            confidence_score=round(confidence_score, 4),
-            all_probabilities={
-                FRESHNESS_LABELS[i]: float(all_probs[i]) 
-                for i in range(3)
-            },
-            description=FRESHNESS_DESCRIPTIONS[label_idx],
-            timestamp=datetime.now().isoformat()
-        )
-        
         result = GradCAMResult(
             heatmap_image=heatmap_base64,
             prediction=prediction
@@ -253,6 +274,8 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ 预测失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -285,7 +308,7 @@ def generate_gradcam(model, input_tensor, target_class):
     output = model(input_tensor)
 
     model.zero_grad()
-    output[0][target_class].backward(retain_graph=True)
+    output[0][target_class].backward(retain_graph=False)
 
     hook.remove()
 
@@ -335,8 +358,7 @@ def overlay_heatmap(original_image, heatmap, alpha=0.4):
         original_image = np.array(Image.fromarray(original_image).resize((224, 224)))
     
     # 应用颜色映射
-    heatmap_colored = np.uint8(255 * heatmap)
-    heatmap_colored = np.uint8(plt.cm.jet(heatmap_colored)[:, :, :3] * 255)
+    heatmap_colored = np.uint8(plt.cm.jet(heatmap)[:, :, :3] * 255)
     
     # 叠加
     overlay = cv2.addWeighted(original_image, 1-alpha, heatmap_colored, alpha, 0)
@@ -361,60 +383,10 @@ async def predict_from_url(request: ImageUrlRequest):
     """
     image_url: str = request.image_url
     try:
-        import requests
+        return predict_image(download_image(image_url))
         
-        # 下载图片
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-        
-        # 转换为UploadFile格式
-        from fastapi import UploadFile
-        import tempfile
-        
-        # 保存到临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
-            tmp_file.write(response.content)
-            tmp_path = tmp_file.name
-        
-        try:
-            # 读取并预测
-            with open(tmp_path, 'rb') as f:
-                image = Image.open(f).convert('RGB')
-            
-            # 预处理
-            input_tensor = preprocess(image).unsqueeze(0).to(device)
-            
-            # 推理
-            with torch.no_grad():
-                outputs = model(input_tensor)
-                probabilities = F.softmax(outputs, dim=1)
-                confidence, predicted = torch.max(probabilities, 1)
-            
-            # 获取结果
-            label_idx = predicted.item()
-            confidence_score = confidence.item()
-            all_probs = probabilities[0].cpu().numpy()
-            
-            # 构建结果
-            result = {
-                "freshness_level": FRESHNESS_LABELS[label_idx],
-                "freshness_label": label_idx,
-                "confidence_score": round(confidence_score, 4),
-                "all_probabilities": {
-                    FRESHNESS_LABELS[i]: float(all_probs[i]) 
-                    for i in range(3)
-                },
-                "description": FRESHNESS_DESCRIPTIONS[label_idx],
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            return result
-            
-        finally:
-            # 确保临时文件被清理（即使发生异常）
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ URL预测失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -431,65 +403,34 @@ async def gradcam_url(request: ImageUrlRequest):
     Returns:
         Grad-CAM热力图结果
     """
-    import requests
-    import tempfile
     image_url = request.image_url
     
     try:
-        # 下载图片
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-        
-        # 保存到临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
-            tmp_file.write(response.content)
-            tmp_path = tmp_file.name
-        
-        # 使用 try/finally 确保临时文件被清理
-        try:
-            # 读取图片
-            with open(tmp_path, 'rb') as f:
-                image = Image.open(f).convert('RGB')
-            
-            # 预处理
-            input_tensor = preprocess(image).unsqueeze(0).to(device)
-            
-            # 推理获取类别
-            with torch.no_grad():
-                outputs = model(input_tensor)
-                probabilities = F.softmax(outputs, dim=1)
-                confidence, predicted = torch.max(probabilities, 1)
-            
-            target_class = predicted.item()
-            
-            # 生成Grad-CAM
-            cam = generate_gradcam(model, input_tensor, target_class)
-            
-            # 生成热力图叠加
-            original_image = np.array(image.resize((224, 224)))
-            heatmap = cv2.resize(cam, (224, 224))
-            heatmap = np.uint8(255 * heatmap)
-            heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-            
-            # 叠加
-            superimposed = cv2.addWeighted(original_image, 0.6, heatmap_colored, 0.4, 0)
-            
-            # 转换为base64
-            _, buffer = cv2.imencode('.jpg', superimposed)
-            heatmap_base64 = base64.b64encode(buffer).decode('utf-8')
-            
-            return {
-                "heatmap_base64": heatmap_base64,
-                "target_class": target_class,
-                "freshness_level": FRESHNESS_LABELS[target_class],
-                "confidence_score": round(confidence.item(), 4)
-            }
-            
-        finally:
-            # 确保临时文件被清理
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        ensure_model_loaded()
+        image = download_image(image_url)
+        input_tensor = preprocess(image).unsqueeze(0).to(device)
+        prediction = predict_image(image)
+        target_class = prediction.freshness_label
+        cam = generate_gradcam(model, input_tensor, target_class)
+
+        original_image = np.array(image.resize((224, 224)))
+        heatmap = cv2.resize(cam, (224, 224))
+        heatmap = np.uint8(255 * heatmap)
+        heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        superimposed = cv2.addWeighted(original_image, 0.6, heatmap_colored, 0.4, 0)
+
+        _, buffer = cv2.imencode('.jpg', superimposed)
+        heatmap_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        return {
+            "heatmap_base64": heatmap_base64,
+            "target_class": target_class,
+            "freshness_level": prediction.freshness_level,
+            "confidence_score": prediction.confidence_score
+        }
                 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ GradCAM URL失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

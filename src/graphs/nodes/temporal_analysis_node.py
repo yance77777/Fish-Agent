@@ -100,6 +100,7 @@ def temporal_analysis_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.5)
     max_tokens: int = model_config.get("max_completion_tokens", 1000)
+    timeout: float = float(model_config.get("timeout", 60))
     
     try:
         # 使用LLMClient调用大模型
@@ -116,7 +117,8 @@ def temporal_analysis_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -146,7 +148,10 @@ def temporal_analysis_node(
             
             # 提取趋势分析结果
             freshness_trend = str(result.get("freshness_trend", "稳定"))
-            predicted_remaining_hours = int(result.get("predicted_remaining_hours", 24))
+            try:
+                predicted_remaining_hours = int(float(result.get("predicted_remaining_hours", 24)))
+            except (TypeError, ValueError):
+                predicted_remaining_hours = 24
             trend_analysis = result.get("trend_analysis", {})
             
     except json.JSONDecodeError:
@@ -201,5 +206,3 @@ def temporal_analysis_node(
         predicted_remaining_hours=predicted_remaining_hours,
         trend_analysis=trend_analysis
     )
-
-

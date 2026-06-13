@@ -11,6 +11,7 @@ import json
 import base64
 import tempfile
 import uuid
+import atexit
 import requests
 from typing import Dict, Any, List, Optional
 from langchain_core.runnables import RunnableConfig
@@ -66,8 +67,10 @@ def enhanced_gradcam_node(
     is_real_gradcam: bool = False
 
     try:
-        # 模型服务地址（从环境变量获取或使用默认值）
-        model_service_url: str = os.getenv("MODEL_SERVICE_URL", "http://localhost:8000")
+        # 模型服务地址由环境变量显式配置；未配置时直接走降级可视化。
+        model_service_url: str = os.getenv("MODEL_SERVICE_URL", "").rstrip("/")
+        if not model_service_url:
+            raise RuntimeError("MODEL_SERVICE_URL is not configured")
 
         # 调用正确的Grad-CAM生成接口
         gradcam_endpoint: str = f"{model_service_url}/gradcam_url"
@@ -86,6 +89,7 @@ def enhanced_gradcam_node(
                 output_path = os.path.join(tempfile.gettempdir(), f"fish_gradcam_{uuid.uuid4().hex[:8]}.jpg")
                 with open(output_path, "wb") as f:
                     f.write(base64.b64decode(heatmap_base64))
+                atexit.register(lambda path=output_path: os.path.exists(path) and os.remove(path))
                 gradcam_url = output_path
 
     except Exception:
@@ -239,6 +243,4 @@ Grad-CAM热力图显示模型在判断新鲜度时重点关注哪些区域：
         heatmap_interpretation=heatmap_interpretation,
         key_attention_regions=key_attention_regions
     )
-
-
 

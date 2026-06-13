@@ -6,12 +6,13 @@
 import os
 import io
 import uuid
+import math
+import atexit
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from utils.file.file import File
 
 
 def project_root() -> Path:
@@ -41,7 +42,15 @@ def parse_bbox(bbox: Any, image_size: tuple[int, int] | None = None) -> tuple[in
     else:
         return 0, 0, 0, 0
 
-    if image_size and max(values) <= 100:
+    if image_size and max(values) <= 1:
+        width, height = image_size
+        values = [
+            values[0] * width,
+            values[1] * height,
+            values[2] * width,
+            values[3] * height,
+        ]
+    elif image_size and max(values) <= 100 and min(image_size) > 100:
         width, height = image_size
         values = [
             values[0] / 100 * width,
@@ -66,6 +75,8 @@ def get_confidence_level(confidence_score: float) -> str:
     
     置信度水平："高"(>=0.8) / "中"(0.5-0.8) / "低"(<0.5)
     """
+    if confidence_score is None or math.isnan(float(confidence_score)):
+        return "低"
     if confidence_score >= 0.8:
         return "高"
     elif confidence_score >= 0.5:
@@ -146,6 +157,7 @@ def generate_attention_overlay(
 
         output_path = str(Path(os.getenv("TMPDIR") or os.getenv("TEMP") or "/tmp") / f"attention_overlay_{uuid.uuid4().hex[:8]}.jpg")
         image.save(output_path, quality=95)
+        atexit.register(lambda path=output_path: Path(path).exists() and Path(path).unlink())
 
         return output_path
 

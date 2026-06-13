@@ -100,12 +100,12 @@ curl -X POST "$FISHFRESHNET_API_URL/predict_url" \
 
 ```bash
 # Linux / macOS
-export FISHFRESHNET_API_URL=http://localhost:8000
-export MODEL_SERVICE_URL=http://localhost:8000
+export FISHFRESHNET_API_URL=https://your-fishfreshnet-api.example
+export MODEL_SERVICE_URL=https://your-fishfreshnet-api.example
 
 # PowerShell
-$env:FISHFRESHNET_API_URL="http://localhost:8000"
-$env:MODEL_SERVICE_URL="http://localhost:8000"
+$env:FISHFRESHNET_API_URL="https://your-fishfreshnet-api.example"
+$env:MODEL_SERVICE_URL="https://your-fishfreshnet-api.example"
 ```
 
 ## Grad-CAM

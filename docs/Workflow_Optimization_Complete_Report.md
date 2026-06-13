@@ -124,8 +124,10 @@ export OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
 
 ```bash
 python -m compileall src installer
-python src/main.py -m http -p 5000
+python src/main.py -m http -p <port>
 python -m uvicorn src.api.model_service:app --host 0.0.0.0 --port <port>
 ```
 
 如果当前环境尚未安装 `langgraph`、`torch` 等依赖，编译可以通过，但导入或运行服务需要先安装对应依赖。
+
+依赖版本范围记录在 `requirements.txt` 和 `pyproject.toml` 中；生产或比赛演示环境建议按 `requirements-lock.example.txt` 生成平台对应的锁定依赖文件。

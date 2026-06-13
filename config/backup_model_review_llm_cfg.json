@@ -3,7 +3,6 @@
         "frequency_penalty": 0,
         "json_schema": "{\"name\":\"\",\"description\":\"\",\"strict\":false,\"schema\":{}}",
         "max_completion_tokens": 800,
-        "max_tokens": 4096,
         "reasoning_effort": "medium",
         "response_format": "text",
         "temperature": 0.2,

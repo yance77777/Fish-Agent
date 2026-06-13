@@ -6,6 +6,8 @@ import os
 import requests
 from typing import Dict, Any, Optional
 import logging
+import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +20,35 @@ class FishFreshNetClient:
         初始化客户端
         
         Args:
-            base_url: API服务地址，默认为本地服务
+            base_url: API服务地址。未配置时客户端会返回降级结果。
         """
-        self.base_url = base_url or os.getenv("FISHFRESHNET_API_URL", "http://localhost:8000")
+        self.base_url = (base_url or os.getenv("FISHFRESHNET_API_URL") or "").rstrip("/")
         self.timeout = 30
+        self.max_retries = 3
+
+    def _is_configured(self) -> bool:
+        return bool(self.base_url)
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        if not self._is_configured():
+            raise RuntimeError("FISHFRESHNET_API_URL is not configured")
+
+        url = f"{self.base_url}{path}"
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.request(method, url, timeout=self.timeout, **kwargs)
+                if response.status_code >= 500 and attempt < self.max_retries - 1:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                response.raise_for_status()
+                return response
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+                if attempt >= self.max_retries - 1:
+                    break
+                time.sleep(0.5 * (2 ** attempt))
+        raise last_error or RuntimeError("FishFreshNet API request failed")
     
     def predict_from_url(self, image_url: str) -> Dict[str, Any]:
         """
@@ -36,13 +63,11 @@ class FishFreshNetClient:
         if not image_url.startswith(("http://", "https://")):
             return self.predict_from_file(image_url)
         try:
-            response = requests.post(
-                f"{self.base_url}/predict_url",
-                json={"image_url": image_url},
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._request("POST", "/predict_url", json={"image_url": image_url})
             return response.json()
+        except RuntimeError as e:
+            logger.error(str(e))
+            return self._fallback_result(str(e))
         
         except requests.exceptions.Timeout:
             logger.error("API请求超时")
@@ -64,13 +89,11 @@ class FishFreshNetClient:
         try:
             with open(image_path, 'rb') as f:
                 files = {'file': f}
-                response = requests.post(
-                    f"{self.base_url}/predict",
-                    files=files,
-                    timeout=self.timeout
-                )
-                response.raise_for_status()
+                response = self._request("POST", "/predict", files=files)
                 return response.json()
+        except RuntimeError as e:
+            logger.error(str(e))
+            return self._fallback_result(str(e))
         
         except requests.exceptions.Timeout:
             logger.error("API请求超时")
@@ -92,13 +115,11 @@ class FishFreshNetClient:
         if not image_url.startswith(("http://", "https://")):
             return self.predict_with_gradcam_from_file(image_url)
         try:
-            response = requests.post(
-                f"{self.base_url}/gradcam_url",
-                json={"image_url": image_url},
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._request("POST", "/gradcam_url", json={"image_url": image_url})
             return response.json()
+        except RuntimeError as e:
+            logger.error(str(e))
+            return self._fallback_result(str(e))
         
         except requests.exceptions.RequestException as e:
             logger.error(f"API请求失败: {e}")
@@ -107,13 +128,11 @@ class FishFreshNetClient:
     def predict_with_gradcam_from_file(self, image_path: str) -> Dict[str, Any]:
         try:
             with open(image_path, "rb") as f:
-                response = requests.post(
-                    f"{self.base_url}/predict_with_gradcam",
-                    files={"file": f},
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
+                response = self._request("POST", "/predict_with_gradcam", files={"file": f})
                 return response.json()
+        except RuntimeError as e:
+            logger.error(str(e))
+            return self._fallback_result(str(e))
         except requests.exceptions.RequestException as e:
             logger.error(f"API请求失败: {e}")
             return self._fallback_result(f"API请求失败: {str(e)}")
@@ -125,6 +144,9 @@ class FishFreshNetClient:
         Returns:
             服务是否可用
         """
+        if not self._is_configured():
+            logger.info("FishFreshNet API URL is not configured")
+            return False
         try:
             response = requests.get(f"{self.base_url}/", timeout=5)
             return response.status_code == 200
@@ -157,13 +179,16 @@ class FishFreshNetClient:
 
 # 全局客户端实例
 _client = None
+_client_lock = threading.Lock()
 
 
 def get_client() -> FishFreshNetClient:
     """获取全局客户端实例"""
     global _client
     if _client is None:
-        _client = FishFreshNetClient()
+        with _client_lock:
+            if _client is None:
+                _client = FishFreshNetClient()
     return _client
 
 

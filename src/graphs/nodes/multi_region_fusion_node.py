@@ -39,7 +39,7 @@ def multi_region_fusion_node(
             llm_config = {}
     
     initial_freshness: str = state.freshness_level or "新鲜"
-    initial_confidence_val: float = state.confidence_score or 0.0
+    initial_confidence_val: float = state.confidence_score if state.confidence_score is not None else 0.0
     
     # 获取图片URL
     image_url: str = state.processed_image.url if state.processed_image else ""
@@ -113,6 +113,7 @@ def multi_region_fusion_node(
     model_id: str = model_config.get("model", "doubao-seed-1-8-251228")
     temperature: float = model_config.get("temperature", 0.3)
     max_tokens: int = model_config.get("max_completion_tokens", 1000)
+    timeout: float = float(model_config.get("timeout", 60))
     
     # 构建消息列表（如果有图片，使用多模态）
     messages: List[Any]
@@ -139,7 +140,8 @@ def multi_region_fusion_node(
             messages=messages,
             model=model_id,
             temperature=temperature,
-            max_completion_tokens=max_tokens
+            max_completion_tokens=max_tokens,
+            timeout=timeout
         )
         
         # 解析LLM响应
@@ -174,8 +176,8 @@ def multi_region_fusion_node(
             fusion_score = fish_eye_score * 0.5 + gill_score * 0.3 + body_score * 0.2
             
             # 使用全局状态字段名
-            freshness_level = str(result.get("freshness_level", result.get("fusion_freshness_level", freshness_level)))
-            confidence_score = float(result.get("confidence_score", result.get("fusion_confidence", fusion_score)))
+            freshness_level = str(result.get("freshness_level", freshness_level))
+            confidence_score = float(result.get("confidence_score", fusion_score))
             confidence_level = str(result.get("confidence_level", get_confidence_level(confidence_score)))
             fusion_method = str(result.get("fusion_method", "大模型融合分析"))
             fusion_details = result.get("fusion_details", {})
@@ -215,5 +217,3 @@ def multi_region_fusion_node(
         fusion_method=fusion_method,
         fusion_details=fusion_details
     )
-
-

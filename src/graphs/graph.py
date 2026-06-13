@@ -21,6 +21,8 @@ Fish-Agent 主图编排（16节点，14个逻辑步骤）
 - 步骤⑬ 结果可视化 (result_visualization)
 - 步骤⑭ 反馈闭环 (feedback_loop)
 """
+import math
+
 from langgraph.graph import StateGraph, END
 from graphs.state import (
     GlobalState,
@@ -72,6 +74,8 @@ def confidence_decision(state: ConfidenceDecisionInput) -> str:
     title: 置信度分支决策
     desc: 根据置信度分数自适应选择后续处理路径
     """
+    if state.confidence_score is None or math.isnan(float(state.confidence_score)):
+        return "低置信度"
     if state.confidence_score >= 0.8:
         return "高置信度"
     elif state.confidence_score >= 0.5:

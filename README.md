@@ -72,18 +72,19 @@ pip install -r requirements-model.txt
 
 # 3. 配置环境变量
 cp .env.example .env
-# 编辑 .env，填写 OPENAI_API_KEY 和 OPENAI_BASE_URL
+# 编辑 .env。OPENAI_API_KEY 和 OPENAI_BASE_URL 为工作流必填；
+# FISHFRESHNET_API_URL / MODEL_SERVICE_URL 为专用模型服务可选配置。
 
 # 4. 启动工作流服务
-python src/main.py -m http -p 5000
+python src/main.py -m http -p <port>
 
 # 5. （可选）启动 FishFreshNetV1 模型服务
-python -m uvicorn src.api.model_service:app --host 0.0.0.0 --port 8000
+python -m uvicorn src.api.model_service:app --host <host> --port <port>
 ```
 
 ## 配置说明
 
-基础工作流依赖写在 `requirements.txt`，模型服务相关依赖写在 `requirements-model.txt`。多模态大模型调用通过 OpenAI-compatible 接口完成，可通过环境变量配置：
+基础工作流依赖写在 `requirements.txt`，模型服务相关依赖写在 `requirements-model.txt`。如需完全可复现部署，可参考 `requirements-lock.example.txt` 在目标环境生成锁定文件。多模态大模型调用通过 OpenAI-compatible 接口完成，可通过环境变量配置：
 
 | 变量 | 说明 |
 | --- | --- |
@@ -94,7 +95,7 @@ python -m uvicorn src.api.model_service:app --host 0.0.0.0 --port 8000
 | `MODEL_SERVICE_URL` | Grad-CAM 服务地址 |
 | `FISHFRESHNET_MODEL_PATH` | FishFreshNetV1 权重文件路径 |
 
-可复制 `.env.example` 作为配置模板。模型权重文件体积较大，不随源码仓库提交；请根据实际部署环境自行放置并配置路径。
+工作流必须配置 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。如果未配置 FishFreshNetV1 模型服务地址，系统会跳过专用模型服务并回退到 OpenAI-compatible 多模态模型。模型权重文件体积较大，不随源码仓库提交；请根据实际部署环境自行放置并配置路径。
 
 ## Windows 本地程序
 
